@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>森林調査 音声記録</title>
+<style>
+  :root {
+    --bg: #f4f7f5;
+    --card: #ffffff;
+    --text: #1f2a24;
+    --muted: #6b756f;
+    --border: #cfd8d2;
+    --primary: #256b45;
+    --primary-dark: #1d5638;
+    --danger: #a63d40;
+    --warn: #8a5b00;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .wrap {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 16px 14px 32px;
+  }
+  h1 {
+    font-size: 24px;
+    margin: 4px 0 16px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+  }
+  .top-grid, .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .field-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .full { grid-column: 1 / -1; }
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 5px;
+    font-weight: 600;
+  }
+  select, input, textarea {
+    width: 100%;
+    font-size: 20px;
+    padding: 11px 10px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: #fff;
+    color: var(--text);
+  }
+  textarea {
+    min-height: 80px;
+    resize: vertical;
+    font-size: 17px;
+  }
+  .value {
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: .02em;
+  }
+  .unit {
+    font-size: 14px;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .transcript {
+    min-height: 62px;
+    padding: 10px;
+    background: #f7faf8;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    font-size: 17px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .status {
+    font-size: 14px;
+    margin-top: 8px;
+    color: var(--muted);
+  }
+  .status.ok { color: var(--primary); font-weight: 700; }
+  .status.err { color: var(--danger); font-weight: 700; }
+  .status.warn { color: var(--warn); font-weight: 700; }
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  button {
+    border: 0;
+    border-radius: 12px;
+    padding: 14px 12px;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .primary {
+    background: var(--primary);
+    color: white;
+  }
+  .primary:active { background: var(--primary-dark); }
+  .secondary {
+    background: #e8eeea;
+    color: var(--text);
+  }
+  .danger {
+    background: #f4e8e8;
+    color: var(--danger);
+  }
+  .wide { grid-column: 1 / -1; }
+  .count {
+    font-size: 14px;
+    color: var(--muted);
+    margin-top: 10px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    border-bottom: 1px solid #e6ebe8;
+    padding: 7px 5px;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .table-wrap { overflow-x: auto; }
+  .help {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+
+  .env-banner {
+    display: none;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    font-size: 14px;
+    line-height: 1.55;
+    font-weight: 600;
+  }
+  .env-banner.warn { display:block; background:#fff4db; border:1px solid #e8c675; color:#6f4b00; }
+  .env-banner.ok { display:block; background:#eaf6ef; border:1px solid #a8d3b8; color:#205b38; }
+
+  @media (max-width: 520px) {
+    .top-grid, .field-grid { grid-template-columns: 1fr; }
+    .actions { grid-template-columns: 1fr; }
+    .value { font-size: 28px; }
+    h1 { font-size: 21px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🌲 森林調査 音声記録</h1>
+  <div id="envBanner" class="env-banner"></div>
+
+  <div class="card">
+    <div class="top-grid">
+      <div>
+        <label for="prefecture">県</label>
+        <select id="prefecture">
+          <option value="">選択してください</option>
+          <option>県A</option>
+          <option>県B</option>
+          <option>県C</option>
+        </select>
+      </div>
+      <div>
+        <label for="plot">試験地</label>
+        <select id="plot">
+          <option value="">選択してください</option>
+          <option>試験地1</option>
+          <option>試験地2</option>
+          <option>試験地3</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="field-grid">
+      <div>
+        <label for="treeNo">樹木番号</label>
+        <input id="treeNo" inputmode="numeric" placeholder="例: 123">
+      </div>
+      <div>
+        <label for="dbh">直径 DBH (cm)</label>
+        <input id="dbh" inputmode="decimal" placeholder="例: 12.5">
+      </div>
+      <div>
+        <label for="height">樹高 (m)</label>
+        <input id="height" inputmode="decimal" placeholder="例: 15.0">
+      </div>
+      <div class="full">
+        <label for="comment">コメント</label>
+        <textarea id="comment" placeholder="例: 幹に傷あり"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>認識した音声</label>
+    <div id="transcript" class="transcript">まだ音声入力されていません。</div>
+    <div id="status" class="status">「番号123、直径12.5、樹高15」のように話してください。</div>
+  </div>
+
+  <div class="card">
+    <div class="actions">
+      <button id="voiceBtn" class="primary wide">🎤 音声入力</button>
+      <button id="redoBtn" class="secondary">↩ やり直す</button>
+      <button id="saveBtn" class="primary">💾 この内容を記録</button>
+      <button id="csvBtn" class="secondary wide">⬇ CSVを出力</button>
+      <button id="clearBtn" class="danger wide">🗑 保存データを全削除</button>
+    </div>
+    <div id="count" class="count">保存件数: 0件</div>
+  </div>
+
+  <div class="card">
+    <label>最近の記録</label>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>番号</th><th>直径</th><th>樹高</th><th>コメント</th><th>日時</th>
+          </tr>
+        </thead>
+        <tbody id="recentBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card help">
+    <b>音声例</b><br>
+    「番号123、直径12.5、樹高15」<br>
+    「番号125、直径18.3、樹高17.2、コメント、幹に傷あり」<br><br>
+    ※ Androidでは、音声入力は <b>https://</b> で開いた場合に利用してください。Downloadsから直接開く <b>content://</b> では音声入力できません。<br>※ 音声認識が使えない端末では、各欄へ手入力して「この内容を記録」を押してください。<br>
+    ※ 保存データはこのブラウザ内に保持されます。調査終了時にCSVを出力してください。
+  </div>
+</div>
+
+<script>
+(() => {
+  const STORAGE_KEY = "forest_voice_records_v1";
+
+  const el = id => document.getElementById(id);
+  const prefecture = el("prefecture");
+  const plot = el("plot");
+  const treeNo = el("treeNo");
+  const dbh = el("dbh");
+  const height = el("height");
+  const comment = el("comment");
+  const transcript = el("transcript");
+  const status = el("status");
+  const voiceBtn = el("voiceBtn");
+  const redoBtn = el("redoBtn");
+  const saveBtn = el("saveBtn");
+  const csvBtn = el("csvBtn");
+  const clearBtn = el("clearBtn");
+  const count = el("count");
+  const recentBody = el("recentBody");
+  const envBanner = el("envBanner");
+
+  let records = loadRecords();
+  let recognition = null;
+  let listening = false;
+
+  function loadRecords() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function persist() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    renderRecent();
+  }
+
+  function setStatus(msg, type="") {
+    status.textContent = msg;
+    status.className = "status" + (type ? " " + type : "");
+  }
+
+  function normalizeJapaneseNumber(s) {
+    if (!s) return "";
+    const map = {
+      "０":"0","１":"1","２":"2","３":"3","４":"4",
+      "５":"5","６":"6","７":"7","８":"8","９":"9",
+      "．":".","。":".","，":",","、":","
+    };
+    return s.replace(/[０-９．。，、]/g, ch => map[ch] || ch);
+  }
+
+  function parseSpeech(raw) {
+    let text = normalizeJapaneseNumber(raw)
+      .replace(/\s+/g, "")
+      .replace(/センチメートル|センチ/g, "")
+      .replace(/メートル/g, "");
+
+    const result = { treeNo:"", dbh:"", height:"", comment:"" };
+
+    // 樹木番号
+    let m = text.match(/(?:樹木番号|木番号|番号|ナンバー)(\d+)/);
+    if (m) result.treeNo = m[1];
+
+    // DBH
+    m = text.match(/(?:胸高直径|直径|DBH)(\d+(?:\.\d+)?)/i);
+    if (m) result.dbh = m[1];
+
+    // 樹高
+    m = text.match(/(?:樹高|高さ)(\d+(?:\.\d+)?)/);
+    if (m) result.height = m[1];
+
+    // コメント
+    m = text.match(/(?:コメント|備考)[,：:]?(.*)$/);
+    if (m) result.comment = m[1].replace(/^,+/, "");
+
+    // 短縮入力: "123,12.5,15"
+    if (!result.treeNo || !result.dbh || !result.height) {
+      const nums = text.match(/\d+(?:\.\d+)?/g) || [];
+      if (!result.treeNo && nums[0]) result.treeNo = nums[0].split(".")[0];
+      if (!result.dbh && nums[1]) result.dbh = nums[1];
+      if (!result.height && nums[2]) result.height = nums[2];
+    }
+
+    return result;
+  }
+
+  function applyParsed(r) {
+    if (r.treeNo) treeNo.value = r.treeNo;
+    if (r.dbh) dbh.value = r.dbh;
+    if (r.height) height.value = r.height;
+    if (r.comment) comment.value = r.comment;
+
+    const missing = [];
+    if (!r.treeNo) missing.push("樹木番号");
+    if (!r.dbh) missing.push("直径");
+    if (!r.height) missing.push("樹高");
+
+    if (missing.length === 0) {
+      setStatus("認識しました。数値を確認して「この内容を記録」を押してください。", "ok");
+    } else {
+      setStatus("未認識: " + missing.join("、") + "。必要なら手入力で修正してください。", "warn");
+    }
+  }
+
+  function explainEnvironment() {
+    const proto = location.protocol;
+    const secure = window.isSecureContext;
+
+    if (!secure || proto === "content:" || proto === "file:") {
+      envBanner.className = "env-banner warn";
+      envBanner.innerHTML =
+        "⚠ このページは <b>" + proto + "</b> で開かれています。Android Chromeではこの開き方ではマイク音声認識を利用できません。" +
+        "<br>GitHub Pagesなどの <b>https://</b> で開いてください。手入力とCSV保存はこのまま利用できます。";
+      return false;
+    }
+
+    envBanner.className = "env-banner ok";
+    envBanner.textContent = "✓ HTTPSで開かれています。音声入力を利用できます。初回はマイク使用の確認が表示されます。";
+    return true;
+  }
+
+  async function ensureMicrophonePermission() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("このブラウザではマイク取得機能を利用できません。");
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  function setupSpeech() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const environmentOK = explainEnvironment();
+
+    if (!environmentOK) {
+      voiceBtn.disabled = true;
+      voiceBtn.textContent = "🎤 HTTPSで開くと音声入力できます";
+      setStatus("現在はローカルファイルとして開かれているため、マイクを使用できません。", "warn");
+      return;
+    }
+
+    if (!SpeechRecognition) {
+      voiceBtn.disabled = true;
+      voiceBtn.textContent = "🎤 音声認識はこのブラウザでは利用できません";
+      setStatus("Chromeなど、音声認識に対応したブラウザで開いてください。", "warn");
+      return;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.lang = "ja-JP";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      listening = true;
+      voiceBtn.textContent = "🎙 聞いています…";
+      setStatus("話してください。例: 番号123、直径12.5、樹高15");
+    };
+
+    recognition.onresult = (event) => {
+      const raw = event.results[0][0].transcript;
+      transcript.textContent = raw;
+      const parsed = parseSpeech(raw);
+      applyParsed(parsed);
+    };
+
+    recognition.onerror = (event) => {
+      let msg = "音声認識エラー: " + event.error;
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        msg = "マイクまたは音声認識の使用が許可されていません。Chromeのサイト設定でマイクを許可してください。";
+      }
+      if (event.error === "no-speech") msg = "音声が認識されませんでした。もう一度お試しください。";
+      if (event.error === "network") msg = "音声認識サービスに接続できません。インターネット接続を確認してください。";
+      setStatus(msg, "err");
+    };
+
+    recognition.onend = () => {
+      listening = false;
+      voiceBtn.textContent = "🎤 音声入力";
+    };
+  }
+
+  voiceBtn.addEventListener("click", async () => {
+    if (!recognition) return;
+    if (listening) {
+      recognition.stop();
+      return;
+    }
+
+    voiceBtn.disabled = true;
+    voiceBtn.textContent = "🎤 マイクを確認中…";
+    setStatus("マイクの使用許可を確認しています。");
+
+    try {
+      await ensureMicrophonePermission();
+      voiceBtn.disabled = false;
+      recognition.start();
+    } catch (e) {
+      voiceBtn.disabled = false;
+      voiceBtn.textContent = "🎤 音声入力";
+      const name = e && e.name ? e.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setStatus("マイクが拒否されています。Chromeのサイト設定 → マイク → 許可 にしてください。", "err");
+      } else {
+        setStatus("マイクを開始できませんでした: " + (e.message || e), "err");
+      }
+    }
+  });
+
+  redoBtn.addEventListener("click", () => {
+    treeNo.value = "";
+    dbh.value = "";
+    height.value = "";
+    comment.value = "";
+    transcript.textContent = "まだ音声入力されていません。";
+    setStatus("もう一度音声入力してください。");
+  });
+
+  function getCurrentRecord() {
+    const no = treeNo.value.trim();
+    const d = dbh.value.trim();
+    const h = height.value.trim();
+
+    if (!prefecture.value) throw new Error("県を選択してください。");
+    if (!plot.value) throw new Error("試験地を選択してください。");
+    if (!/^\d+$/.test(no)) throw new Error("樹木番号を整数で入力してください。");
+    if (!/^\d+(\.\d+)?$/.test(d)) throw new Error("直径を数値で入力してください。");
+    if (!/^\d+(\.\d+)?$/.test(h)) throw new Error("樹高を数値で入力してください。");
+
+    return {
+      prefecture: prefecture.value,
+      plot: plot.value,
+      tree_no: no,
+      dbh_cm: Number(d),
+      height_m: Number(h),
+      comment: comment.value.trim(),
+      datetime: new Date().toLocaleString("ja-JP")
+    };
+  }
+
+  saveBtn.addEventListener("click", () => {
+    try {
+      const rec = getCurrentRecord();
+      records.push(rec);
+      persist();
+
+      setStatus(`樹木番号 ${rec.tree_no} を保存しました。`, "ok");
+
+      treeNo.value = "";
+      dbh.value = "";
+      height.value = "";
+      comment.value = "";
+      transcript.textContent = "次の木を音声入力してください。";
+      treeNo.focus();
+    } catch (e) {
+      setStatus(e.message, "err");
+    }
+  });
+
+  function csvEscape(v) {
+    const s = String(v ?? "");
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  csvBtn.addEventListener("click", () => {
+    if (records.length === 0) {
+      setStatus("保存された記録がありません。", "warn");
+      return;
+    }
+
+    const headers = ["県","試験地","樹木番号","直径_cm","樹高_m","コメント","記録日時"];
+    const rows = records.map(r => [
+      r.prefecture, r.plot, r.tree_no, r.dbh_cm, r.height_m, r.comment, r.datetime
+    ]);
+
+    const csv = "\uFEFF" + [headers, ...rows]
+      .map(row => row.map(csvEscape).join(","))
+      .join("\r\n");
+
+    const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth()+1).padStart(2,"0");
+    const d = String(today.getDate()).padStart(2,"0");
+    const pref = (prefecture.value || "未選択").replace(/[\\/:*?"<>|]/g, "_");
+    const pl = (plot.value || "未選択").replace(/[\\/:*?"<>|]/g, "_");
+
+    a.href = url;
+    a.download = `forest_${pref}_${pl}_${y}${m}${d}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setStatus("CSVを出力しました。", "ok");
+  });
+
+  clearBtn.addEventListener("click", () => {
+    if (!confirm("保存済みの全記録を削除します。よろしいですか？")) return;
+    records = [];
+    persist();
+    setStatus("保存データを全削除しました。", "ok");
+  });
+
+  function renderRecent() {
+    count.textContent = `保存件数: ${records.length}件`;
+    recentBody.innerHTML = "";
+
+    records.slice(-10).reverse().forEach(r => {
+      const tr = document.createElement("tr");
+      [r.tree_no, r.dbh_cm, r.height_m, r.comment, r.datetime].forEach(v => {
+        const td = document.createElement("td");
+        td.textContent = v;
+        tr.appendChild(td);
+      });
+      recentBody.appendChild(tr);
+    });
+  }
+
+  setupSpeech();
+  renderRecent();
+})();
+</script>
+</body>
+          </html>
