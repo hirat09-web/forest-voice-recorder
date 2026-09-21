@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.3</title>
+<title>森林調査 音声記録 v5.6</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.3</h1>
+<h1>🌲 森林調査 音声記録 v5.6</h1>
 
 <div class="card">
  <div class="grid">
@@ -58,19 +58,19 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
   <div class="box old"><h3>前回調査</h3>
    <div class="value">直径：<b id="oldDbh">―</b> cm</div>
    <div class="value">樹高：<b id="oldHeight">―</b> m</div>
-   <div class="small">コメント：<span id="oldComment">―</span></div>
+   <div class="small"><b>前回コメント：</b><span id="oldComment">―</span></div>
   </div>
   <div class="box new"><h3>今回調査</h3>
    <label>直径 DBH (cm)</label><input id="dbh" inputmode="decimal" placeholder="例 45.2">
    <label style="margin-top:8px">樹高 (m)</label><input id="height" inputmode="decimal" placeholder="例 22.1">
-   <label style="margin-top:8px">コメント</label><textarea id="comment" placeholder="任意"></textarea>
+   <label style="margin-top:8px">今回コメント</label><textarea id="comment" placeholder="任意"></textarea>
   </div>
  </div>
 </div>
 
 <div class="card">
  <label>認識した音声</label><div id="transcript" class="transcript">まだ音声入力されていません。</div>
- <div id="msg" class="status">例：「番号1、直径45.2」または「番号1、樹高22.1」</div>
+ <div id="msg" class="status">両方入力：「番号1、直径45.2」→ 少し間 →「樹高22.1」。片方だけ入力する場合は、認識後に「⏹ 音声入力終了」を押してください。</div>
 </div>
 
 <div class="card"><div class="actions">
@@ -82,7 +82,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 <div class="card">
  <label>測定状況</label>
  <div class="small">行をタップするとその木を呼び出します。⬜未測定／🟡片方のみ／✅直径・樹高とも入力済み</div>
- <div class="table-wrap"><table><thead><tr><th>状態</th><th>番号</th><th>前回径</th><th>今回径</th><th>前回高</th><th>今回高</th></tr></thead><tbody id="body"></tbody></table></div>
+ <div class="table-wrap"><table><thead><tr><th>状態</th><th>番号</th><th>前回径</th><th>今回径</th><th>前回高</th><th>今回高</th><th>前回コメント</th><th>今回コメント</th></tr></thead><tbody id="body"></tbody></table></div>
 </div>
 </div>
 <script>
@@ -90,7 +90,7 @@ const MASTER = [{"都道府県": "三重県", "試験地名": "茗荷淵山ヒ�
 const $=id=>document.getElementById(id);
 const pref=$("prefecture"),plot=$("plot"),treeNo=$("treeNo"),dbh=$("dbh"),height=$("height"),comment=$("comment");
 const msg=$("msg"),transcript=$("transcript"),comparison=$("comparison");
-let records=[], recognition=null;
+let records=[], recognition=null, isListening=false, stopRequested=false;
 
 function setMsg(t,c=""){msg.textContent=t;msg.className="status "+c}
 function normalize(s){const m={"０":"0","１":"1","２":"2","３":"3","４":"4","５":"5","６":"6","７":"7","８":"8","９":"9","．":".","。":".","，":",","、":","};return (s||"").replace(/[０-９．。，、]/g,x=>m[x]||x)}
@@ -134,13 +134,61 @@ function setupSpeech(){
  if(!window.isSecureContext||location.protocol==="file:"||location.protocol==="content:"){env.className="banner warn";env.textContent="⚠ 音声入力はGitHub PagesなどのHTTPSで開いてください。";return}
  env.className="banner ok";env.textContent="✓ HTTPS接続：音声入力を利用できます。";
  if(!SR){setMsg("このブラウザは音声認識APIに対応していません。","warn");return}
- recognition=new SR();recognition.lang="ja-JP";recognition.interimResults=false;recognition.continuous=false;
- recognition.onstart=()=>{$("voiceBtn").textContent="🎙 聞いています…"}
- recognition.onresult=e=>{let raw=e.results[0][0].transcript;transcript.textContent=raw;applySpeech(parseSpeech(raw))}
- recognition.onerror=e=>setMsg("音声認識エラー："+e.error,"err");
- recognition.onend=()=>{$("voiceBtn").textContent="🎤 音声入力"}
+ recognition=new SR();recognition.lang="ja-JP";recognition.interimResults=false;recognition.continuous=true;
+ recognition.onstart=()=>{
+   isListening=true;stopRequested=false;
+   $("voiceBtn").textContent="⏹ 音声入力終了";
+   $("voiceBtn").className="danger wide";
+ }
+ recognition.onresult=e=>{
+   let parts=[];
+   for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)parts.push(e.results[i][0].transcript)}
+   if(!parts.length)return;
+   let raw=parts.join(" ");
+   transcript.textContent=(transcript.textContent==="まだ音声入力されていません。"||transcript.textContent==="次の木を音声入力してください。")?raw:(transcript.textContent+" / "+raw);
+   applySpeech(parseSpeech(raw));
+   if(treeNo.value.trim() && dbh.value.trim() && height.value.trim()){
+     setMsg(`番号 ${treeNo.value.trim()}：直径と樹高を認識しました。内容を確認して記録してください。`,"ok");
+     stopRequested=false;
+     try{recognition.stop()}catch(_){}
+   }else{
+     setMsg("続けて話してください。直径のあとに少し間を置いてから樹高を話しても大丈夫です。","ok");
+   }
+ }
+ recognition.onerror=e=>{if(e.error!=="no-speech")setMsg("音声認識エラー："+e.error,"err")};
+ recognition.onend=()=>{
+   isListening=false;
+   $("voiceBtn").textContent="🎤 音声入力";
+   $("voiceBtn").className="primary wide";
+   if(stopRequested){
+     let no=treeNo.value.trim(), hasD=dbh.value.trim()!=="", hasH=height.value.trim()!=="";
+     if(no && (hasD||hasH)){
+       setMsg(`番号 ${no}：音声入力を終了しました。内容を確認して「記録・更新」を押してください。`,"ok");
+     }else{
+       setMsg("音声入力を終了しました。","warn");
+     }
+     stopRequested=false;
+   }
+ }
 }
-$("voiceBtn").onclick=async()=>{if(!recognition)return;try{if(navigator.mediaDevices?.getUserMedia){let st=await navigator.mediaDevices.getUserMedia({audio:true});st.getTracks().forEach(x=>x.stop())}recognition.start()}catch(e){setMsg("マイクを開始できません。サイトのマイク権限を確認してください。","err")}}
+$("voiceBtn").onclick=async()=>{
+ if(!recognition)return;
+ if(isListening){
+   stopRequested=true;
+   try{recognition.stop()}catch(_){}
+   return;
+ }
+ try{
+   if(navigator.mediaDevices?.getUserMedia){
+     let st=await navigator.mediaDevices.getUserMedia({audio:true});
+     st.getTracks().forEach(x=>x.stop())
+   }
+   transcript.textContent="聞き取り中…";
+   recognition.start()
+ }catch(e){
+   setMsg("マイクを開始できません。サイトのマイク権限を確認してください。","err")
+ }
+}
 
 function saveCurrent(){
  if(!plot.value)throw Error("試験地を選択してください。");
@@ -161,7 +209,7 @@ $("clearBtn").onclick=clearInput;
 function state(r){let d=r.current_dbh!==""&&r.current_dbh!=null,h=r.current_height!==""&&r.current_height!=null;if(d&&h)return["✅ 完了","complete"];if(d||h)return["🟡 途中","partial"];return["⬜ 未測定","todo"]}
 function render(){
  let body=$("body");body.innerHTML="";let done=0,part=0,todo=0;
- records.slice().sort((a,b)=>Number(a.tree_no)-Number(b.tree_no)).forEach(r=>{let [st,cl]=state(r);if(cl==="complete")done++;else if(cl==="partial")part++;else todo++;let tr=document.createElement("tr");tr.className=cl;[st,r.tree_no,r.prev_dbh??"",r.current_dbh??"",r.prev_height??"",r.current_height??""].forEach(v=>{let td=document.createElement("td");td.textContent=v;tr.appendChild(td)});tr.onclick=()=>{treeNo.value=r.tree_no;showTree(r.tree_no);window.scrollTo({top:document.querySelector(".compare").getBoundingClientRect().top+window.scrollY-100,behavior:"smooth"})};body.appendChild(tr)});
+ records.slice().sort((a,b)=>Number(a.tree_no)-Number(b.tree_no)).forEach(r=>{let [st,cl]=state(r);if(cl==="complete")done++;else if(cl==="partial")part++;else todo++;let tr=document.createElement("tr");tr.className=cl;[st,r.tree_no,r.prev_dbh??"",r.current_dbh??"",r.prev_height??"",r.current_height??"",r.prev_comment??"",r.current_comment??""].forEach(v=>{let td=document.createElement("td");td.textContent=v;tr.appendChild(td)});tr.onclick=()=>{treeNo.value=r.tree_no;showTree(r.tree_no);window.scrollTo({top:document.querySelector(".compare").getBoundingClientRect().top+window.scrollY-100,behavior:"smooth"})};body.appendChild(tr)});
  $("nAll").textContent=records.length;$("nDone").textContent=done;$("nPart").textContent=part;$("nTodo").textContent=todo;
 }
 function splitCSVLine(line){let a=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c=='"'){if(q&&line[i+1]=='"'){cur+='"';i++}else q=!q}else if(c==","&&!q){a.push(cur);cur=""}else cur+=c}a.push(cur);return a}
