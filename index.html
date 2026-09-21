@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.2</title>
+<title>森林調査 音声記録 v5.3</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.2</h1>
+<h1>🌲 森林調査 音声記録 v5.3</h1>
 
 <div class="card">
  <div class="grid">
@@ -40,8 +40,9 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 
 <div class="card">
  <label>前回調査CSV</label>
- <input id="previousCsv" type="file" accept=".csv,text/csv">
- <div class="small" style="margin-top:7px">対応形式：<b>樹木番号・直径・樹高・コメント</b>。読み込んだ直径・樹高・コメントは「前回値」として保持し、今回値は空欄から開始します。</div>
+ <div id="csvLoadInfo" class="banner">試験地を選択すると、<b>data/試験地名.csv</b> を自動で読み込みます。</div>
+ <button id="reloadCsvBtn" class="secondary" style="margin-top:9px;width:100%">↻ 前回CSVを再読み込み</button>
+ <div class="small" style="margin-top:7px">CSV形式：<b>樹木番号・直径・樹高・コメント</b>。CSVが存在しない場合は、その旨を表示します。</div>
 </div>
 
 <div class="card">
@@ -98,7 +99,7 @@ function storageKey(){return "forest_v52_"+(plot.value||"none")}
 
 [...new Set(MASTER.map(x=>x["都道府県"]))].sort((a,b)=>a.localeCompare(b,"ja")).forEach(x=>{let o=document.createElement("option");o.value=o.textContent=x;pref.appendChild(o)})
 pref.onchange=()=>{plot.innerHTML='<option value="">試験地を選択</option>';MASTER.filter(x=>x["都道府県"]===pref.value).sort((a,b)=>a["試験地名"].localeCompare(b["試験地名"],"ja")).forEach(x=>{let o=document.createElement("option");o.value=x.site_key;o.textContent=x["試験地名"];plot.appendChild(o)});plot.disabled=!pref.value;records=[];clearInput();render()}
-plot.onchange=()=>{if(!plot.value){records=[];render();return}records=JSON.parse(localStorage.getItem(storageKey())||"[]");$("siteInfo").textContent="選択中："+plot.options[plot.selectedIndex].textContent;clearInput();render()}
+plot.onchange=async()=>{if(!plot.value){records=[];render();return}$("siteInfo").textContent="選択中："+plot.options[plot.selectedIndex].textContent;clearInput();await loadSiteCsv(false)}
 
 function parseSpeech(raw){
  let t=normalize(raw).replace(/\s+/g,"").replace(/センチメートル|センチ|メートル/g,"");
@@ -171,17 +172,41 @@ function parseCSV(text){
  if(ni<0||di<0||hi<0||ci<0)throw Error("CSVは「樹木番号・直径・樹高・コメント」の4列にしてください。");
  return lines.slice(1).map(line=>{let c=splitCSVLine(line);return{tree_no:(c[ni]||"").trim(),prev_dbh:(c[di]||"").trim(),prev_height:(c[hi]||"").trim(),prev_comment:(c[ci]||"").trim(),current_dbh:"",current_height:"",current_comment:""}}).filter(r=>r.tree_no)
 }
-$("previousCsv").onchange=async e=>{try{
- if(!plot.value)throw Error("先に試験地を選択してください。");
- let f=e.target.files[0];if(!f)return;
- records=parseCSV(await f.text());localStorage.setItem(storageKey(),JSON.stringify(records));render();clearInput();
- setMsg(`前回調査データ ${records.length} 本を読み込みました。今回値はすべて空欄から開始します。`,"ok")
-}catch(err){setMsg(err.message,"err")}}
+function siteCsvUrl(){
+ let name=plot.options[plot.selectedIndex]?.textContent||"";
+ return "data/"+encodeURIComponent(name)+".csv"
+}
+async function loadSiteCsv(force){
+ if(!plot.value)return;
+ const info=$("csvLoadInfo"), name=plot.options[plot.selectedIndex].textContent, url=siteCsvUrl();
+ info.className="banner warn";info.textContent="読み込み中："+name+".csv";
+ try{
+   const fetchUrl=force ? url+(url.includes("?")?"&":"?")+"_="+Date.now() : url;
+   const res=await fetch(fetchUrl,{cache:force?"no-store":"default"});
+   if(!res.ok){if(res.status===404)throw new Error("CSV_NOT_FOUND");throw new Error("HTTP "+res.status)}
+   records=parseCSV(await res.text());
+   localStorage.setItem(storageKey(),JSON.stringify(records));
+   render();clearInput();
+   info.className="banner ok";info.textContent="✓ "+name+".csv：前回データ "+records.length+" 本を自動読み込みしました。";
+   setMsg(`前回調査データ ${records.length} 本を読み込みました。今回値は空欄から開始します。`,"ok");
+ }catch(err){
+   records=[];render();
+   info.className="banner warn";
+   if(err.message==="CSV_NOT_FOUND"){
+     info.textContent="⚠ data/"+name+".csv が見つかりません。GitHubの data フォルダに同名CSVを置いてください。";
+     setMsg("この試験地の前回CSVがまだ登録されていません。","warn");
+   }else{
+     info.textContent="⚠ CSVを読み込めませんでした："+err.message;
+     setMsg("前回CSVの自動読み込みに失敗しました。","err");
+   }
+ }
+}
+$("reloadCsvBtn").onclick=()=>loadSiteCsv(true);
 
 function esc(v){let s=String(v??"");return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 $("csvBtn").onclick=()=>{
  if(!plot.value){setMsg("試験地を選択してください。","warn");return}
- if(!records.length){setMsg("前回CSVを読み込んでください。","warn");return}
+ if(!records.length){setMsg("この試験地の前回CSVが読み込まれていません。","warn");return}
  let name=plot.options[plot.selectedIndex].textContent;
  let head=["樹木番号","直径","樹高","コメント"];
  // Output is deliberately the same four-column schema as the input.
