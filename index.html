@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.9</title>
+<title>森林調査 音声記録 v5.10</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.9</h1>
+<h1>🌲 森林調査 音声記録 v5.10</h1>
 
 <div class="card">
  <div class="grid">
@@ -45,7 +45,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
  <label>前回調査CSV</label>
  <div id="csvLoadInfo" class="banner">試験地を選択すると、<b>data/試験地名.csv</b> を自動で読み込みます。</div>
  <button id="reloadCsvBtn" class="secondary" style="margin-top:9px;width:100%">↻ 前回CSVを再読み込み</button>
- <div class="small" style="margin-top:7px">CSV形式：<b>樹木番号・直径・樹高・コメント</b>。CSVが存在しない場合は、その旨を表示します。</div>
+ <div class="small" style="margin-top:7px">CSV形式：<b>樹木番号・樹型級・直径1・直径2・樹高・コメント</b>。CSVが存在しない場合は、その旨を表示します。</div>
 </div>
 
 <div class="card">
@@ -89,7 +89,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 <div class="card">
  <label>測定状況</label>
  <div class="small">行をタップするとその木を呼び出します。⬜未測定／🟡片方のみ／✅直径・樹高とも入力済み</div>
- <div class="table-wrap"><table><thead><tr><th>状態</th><th>番号</th><th>前回径</th><th>今回径</th><th>前回高</th><th>今回高</th><th>前回コメント</th><th>今回コメント</th></tr></thead><tbody id="body"></tbody></table></div>
+ <div class="table-wrap"><table><thead><tr><th>状態</th><th>番号</th><th>前回樹型級</th><th>今回樹型級</th><th>前回径1</th><th>今回径1</th><th class="d2col">前回径2</th><th class="d2col">今回径2</th><th>前回高</th><th>今回高</th><th>前回コメント</th><th>今回コメント</th></tr></thead><tbody id="body"></tbody></table></div>
 </div>
 </div>
 <script>
@@ -108,7 +108,7 @@ pref.onchange=()=>{plot.innerHTML='<option value="">試験地を選択</option>'
 plot.onchange=async()=>{records=[];render();if(!plot.value)return;let subs=[...new Set(MASTER.filter(x=>x["担当"]===owner.value&&x["都道府県"]===pref.value&&x["試験地"]===plot.value).map(x=>x["試験区"]).filter(Boolean))];subPlot.innerHTML="";if(subs.length){subPlot.add(new Option("試験区を選択",""));subs.sort((a,b)=>a.localeCompare(b,"ja",{numeric:true})).forEach(x=>subPlot.add(new Option(x,x)));subPlot.disabled=false}else{subPlot.add(new Option("試験区なし",""));subPlot.disabled=true;await loadSiteCsv(false)}};
 subPlot.onchange=async()=>{if(subPlot.value)await loadSiteCsv(false)};
 diamMethod.onchange=()=>{updateMethodUI();render();showTree(treeNo.value)};
-function updateMethodUI(){$("d2Wrap").style.display=diamMethod.value==="caliper"?"block":"none"}
+function updateMethodUI(){$("d2Wrap").style.display=diamMethod.value==="caliper"?"block":"none";document.querySelectorAll(".d2col").forEach(el=>el.style.display=diamMethod.value==="caliper"?"table-cell":"none")}
 function parseCSV(text){let lines=text.replace(/^\uFEFF/,"").split(/\r?\n/).filter(x=>x.trim()),h=splitCSVLine(lines[0]).map(x=>x.trim()),ix=n=>h.indexOf(n);for(let n of["樹木番号","樹型級","直径1","直径2","樹高","コメント"])if(ix(n)<0)throw Error("CSVは6列（樹木番号,樹型級,直径1,直径2,樹高,コメント）にしてください。");return lines.slice(1).map(l=>{let c=splitCSVLine(l);return{tree_no:(c[ix("樹木番号")]||"").trim(),prev_form:(c[ix("樹型級")]||"").trim(),prev_d1:(c[ix("直径1")]||"").trim(),prev_d2:(c[ix("直径2")]||"").trim(),prev_height:(c[ix("樹高")]||"").trim(),prev_comment:(c[ix("コメント")]||"").trim(),current_form:"",current_d1:"",current_d2:"",current_height:"",current_comment:""}}).filter(r=>r.tree_no)}
 function splitCSVLine(line){let a=[],cur="",q=false;for(let i=0;i<line.length;i++){let c=line[i];if(c=='"'){if(q&&line[i+1]=='"'){cur+='"';i++}else q=!q}else if(c==","&&!q){a.push(cur);cur=""}else cur+=c}a.push(cur);return a}
 async function loadSiteCsv(force){let info=$("csvLoadInfo"),name=dataBaseName(),url=siteCsvUrl();info.textContent="読み込み中："+name+".csv";try{let res=await fetch(force?url+"?_="+Date.now():url,{cache:force?"no-store":"default"});if(!res.ok)throw Error(res.status===404?"CSV_NOT_FOUND":"HTTP "+res.status);records=parseCSV(await res.text());localStorage.setItem(storageKey(),JSON.stringify(records));render();info.className="banner ok";info.textContent="✓ "+name+".csv：前回データ "+records.length+" 本を読み込みました。"}catch(e){records=[];render();info.className="banner warn";info.textContent=e.message==="CSV_NOT_FOUND"?"⚠ data/"+name+".csv が見つかりません。":"⚠ CSV読込失敗："+e.message}}
@@ -122,9 +122,9 @@ function checkGrowth(){let r=findRec(treeNo.value.trim());if(!r)return;[["D1",d1
 function state(r){let dia=diamMethod.value==="caliper"?(r.current_d1!==""&&r.current_d2!==""):r.current_d1!=="";let h=r.current_height!=="";if(dia&&h)return["✅ 完了","complete"];if(dia||h||r.current_form!=="")return["🟡 途中","partial"];return["⬜ 未測定","todo"]}
 function saveCurrent(){let r=findRec(treeNo.value.trim());if(!r)return setMsg("樹木番号を確認してください。","err");r.current_form=treeForm.value.trim();r.current_d1=d1.value.trim();r.current_d2=diamMethod.value==="caliper"?d2.value.trim():"";r.current_height=height.value.trim();r.current_comment=comment.value.trim();localStorage.setItem(storageKey(),JSON.stringify(records));render();checkGrowth();setMsg("今回値を保存しました。","ok")}
 $("saveBtn").onclick=saveCurrent;$("clearBtn").onclick=()=>{treeNo.value="";comparison.classList.add("hidden")};
-function render(){let b=$("body");b.innerHTML="";let done=0,part=0,todo=0;records.slice().sort((a,b)=>Number(a.tree_no)-Number(b.tree_no)).forEach(r=>{let[s,c]=state(r);c==="complete"?done++:c==="partial"?part++:todo++;let tr=document.createElement("tr");tr.className=c;[s,r.tree_no,r.prev_d1,r.current_d1,r.prev_height,r.current_height].forEach(v=>{let td=document.createElement("td");td.textContent=v??"";tr.appendChild(td)});tr.onclick=()=>{treeNo.value=r.tree_no;showTree(r.tree_no)};b.appendChild(tr)});$("nAll").textContent=records.length;$("nDone").textContent=done;$("nPart").textContent=part;$("nTodo").textContent=todo}
+function render(){let b=$("body");b.innerHTML="";let done=0,part=0,todo=0;records.slice().sort((a,b)=>Number(a.tree_no)-Number(b.tree_no)).forEach(r=>{let[s,c]=state(r);c==="complete"?done++:c==="partial"?part++:todo++;let tr=document.createElement("tr");tr.className=c;let vals=[s,r.tree_no,r.prev_form,r.current_form,r.prev_d1,r.current_d1,r.prev_d2,r.current_d2,r.prev_height,r.current_height,r.prev_comment,r.current_comment];vals.forEach((v,i)=>{let td=document.createElement("td");td.textContent=v??"";if(i===6||i===7)td.classList.add("d2col");tr.appendChild(td)});tr.onclick=()=>{treeNo.value=r.tree_no;showTree(r.tree_no)};b.appendChild(tr)});$("nAll").textContent=records.length;$("nDone").textContent=done;$("nPart").textContent=part;$("nTodo").textContent=todo;updateMethodUI()}
 function normalize(s){return(s||"").replace(/[０-９．]/g,c=>"０１２３４５６７８９．".indexOf(c)<10?String("０１２３４５６７８９".indexOf(c)):".")}
-function parseSpeech(raw){let t=normalize(raw).replace(/\s+/g,""),r={};let m=t.match(/(?:番号|樹木番号)(\d+)/);if(m)r.no=m[1];m=t.match(/樹型級(\d+)/);if(m)r.form=m[1];m=t.match(/直径(?:1|１)(\d+(?:\.\d+)?)/);if(m)r.d1=m[1];m=t.match(/直径(?:2|２)(\d+(?:\.\d+)?)/);if(m)r.d2=m[1];if(!r.d1){m=t.match(/直径(\d+(?:\.\d+)?)/);if(m)r.d1=m[1]}m=t.match(/(?:樹高|高さ)(\d+(?:\.\d+)?)/);if(m)r.h=m[1];return r}
+function parseSpeech(raw){let t=normalize(raw).replace(/\s+/g,""),r={};let m=t.match(/(?:番号|樹木番号)(\d+)/);if(m)r.no=m[1];m=t.match(/樹型級([0-9]+[a-zA-Z]?)/);if(m)r.form=m[1];m=t.match(/直径(?:1|１)(\d+(?:\.\d+)?)/);if(m)r.d1=m[1];m=t.match(/直径(?:2|２)(\d+(?:\.\d+)?)/);if(m)r.d2=m[1];if(!r.d1){m=t.match(/直径(\d+(?:\.\d+)?)/);if(m)r.d1=m[1]}m=t.match(/(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ)(\d+(?:\.\d+)?)/);if(m)r.h=m[1];return r}
 function setupSpeech(){let SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return;recognition=new SR();recognition.lang="ja-JP";recognition.interimResults=false;recognition.continuous=true;recognition.onstart=()=>{isListening=true;$("voiceBtn").textContent="⏹ 音声入力終了"};recognition.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal){let raw=e.results[i][0].transcript,r=parseSpeech(raw);transcript.textContent=raw;if(r.no){treeNo.value=r.no;showTree(r.no)}if(r.form)treeForm.value=r.form;if(r.d1)d1.value=r.d1;if(r.d2)d2.value=r.d2;if(r.h)height.value=r.h;checkGrowth()}};recognition.onend=()=>{isListening=false;$("voiceBtn").textContent="🎤 音声入力"}}
 $("voiceBtn").onclick=()=>{if(!recognition)return;if(isListening){recognition.stop();return}recognition.start()}
 function esc(v){let s=String(v??"");return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
