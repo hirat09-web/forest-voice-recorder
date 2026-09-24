@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.10</title>
+<title>森林調査 音声記録 v5.11</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.10</h1>
+<h1>🌲 森林調査 音声記録 v5.11</h1>
 
 <div class="card">
  <div class="grid">
@@ -77,7 +77,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 
 <div class="card">
  <label>認識した音声</label><div id="transcript" class="transcript">まだ音声入力されていません。</div>
- <div id="msg" class="status">両方入力：「番号1、直径45.2」→ 少し間 →「樹高22.1」。片方だけ入力する場合は、認識後に「⏹ 音声入力終了」を押してください。</div>
+ <div id="msg" class="status">輪尺：「番号4、樹型級2d、直径18.8、18.9、樹高15.2」のように入力できます。直径テープでは「直径18.8」で直径1に入ります。</div>
 </div>
 
 <div class="card"><div class="actions">
@@ -124,8 +124,33 @@ function saveCurrent(){let r=findRec(treeNo.value.trim());if(!r)return setMsg("�
 $("saveBtn").onclick=saveCurrent;$("clearBtn").onclick=()=>{treeNo.value="";comparison.classList.add("hidden")};
 function render(){let b=$("body");b.innerHTML="";let done=0,part=0,todo=0;records.slice().sort((a,b)=>Number(a.tree_no)-Number(b.tree_no)).forEach(r=>{let[s,c]=state(r);c==="complete"?done++:c==="partial"?part++:todo++;let tr=document.createElement("tr");tr.className=c;let vals=[s,r.tree_no,r.prev_form,r.current_form,r.prev_d1,r.current_d1,r.prev_d2,r.current_d2,r.prev_height,r.current_height,r.prev_comment,r.current_comment];vals.forEach((v,i)=>{let td=document.createElement("td");td.textContent=v??"";if(i===6||i===7)td.classList.add("d2col");tr.appendChild(td)});tr.onclick=()=>{treeNo.value=r.tree_no;showTree(r.tree_no)};b.appendChild(tr)});$("nAll").textContent=records.length;$("nDone").textContent=done;$("nPart").textContent=part;$("nTodo").textContent=todo;updateMethodUI()}
 function normalize(s){return(s||"").replace(/[０-９．]/g,c=>"０１２３４５６７８９．".indexOf(c)<10?String("０１２３４５６７８９".indexOf(c)):".")}
-function parseSpeech(raw){let t=normalize(raw).replace(/\s+/g,""),r={};let m=t.match(/(?:番号|樹木番号)(\d+)/);if(m)r.no=m[1];m=t.match(/樹型級([0-9]+[a-zA-Z]?)/);if(m)r.form=m[1];m=t.match(/直径(?:1|１)(\d+(?:\.\d+)?)/);if(m)r.d1=m[1];m=t.match(/直径(?:2|２)(\d+(?:\.\d+)?)/);if(m)r.d2=m[1];if(!r.d1){m=t.match(/直径(\d+(?:\.\d+)?)/);if(m)r.d1=m[1]}m=t.match(/(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ)(\d+(?:\.\d+)?)/);if(m)r.h=m[1];return r}
-function setupSpeech(){let SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return;recognition=new SR();recognition.lang="ja-JP";recognition.interimResults=false;recognition.continuous=true;recognition.onstart=()=>{isListening=true;$("voiceBtn").textContent="⏹ 音声入力終了"};recognition.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal){let raw=e.results[i][0].transcript,r=parseSpeech(raw);transcript.textContent=raw;if(r.no){treeNo.value=r.no;showTree(r.no)}if(r.form)treeForm.value=r.form;if(r.d1)d1.value=r.d1;if(r.d2)d2.value=r.d2;if(r.h)height.value=r.h;checkGrowth()}};recognition.onend=()=>{isListening=false;$("voiceBtn").textContent="🎤 音声入力"}}
+function parseSpeech(raw){
+ let t=normalize(raw).replace(/[、，]/g,",").replace(/\s+/g,""),r={};
+ let m=t.match(/(?:番号|樹木番号)(\d+)/); if(m)r.no=m[1];
+
+ // 樹型級: 2d / 2D のような値
+ m=t.match(/樹型級([0-9]+[a-zA-Z]?)/); if(m)r.form=m[1];
+
+ // 「直径1 18.8、直径2 18.9」の従来形式
+ m=t.match(/直径(?:1|１)(\d+(?:\.\d+)?)/); if(m)r.d1=m[1];
+ m=t.match(/直径(?:2|２)(\d+(?:\.\d+)?)/); if(m)r.d2=m[1];
+
+ // 現場向け短縮形式:
+ // 輪尺   「直径18.8、18.9」→ D1=18.8, D2=18.9
+ // テープ 「直径18.8」      → D1=18.8
+ if(!r.d1){
+   m=t.match(/直径(\d+(?:\.\d+)?)(?:[,・\/](\d+(?:\.\d+)?))?/);
+   if(m){r.d1=m[1]; if(m[2] && diamMethod.value==="caliper")r.d2=m[2];}
+ }
+
+ m=t.match(/(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ)(\d+(?:\.\d+)?)/);
+ if(m)r.h=m[1];
+
+ // コメント以降はそのまま文字列として取り込む
+ m=t.match(/コメント(.+)$/); if(m)r.comment=m[1];
+ return r
+}
+function setupSpeech(){let SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return;recognition=new SR();recognition.lang="ja-JP";recognition.interimResults=false;recognition.continuous=true;recognition.onstart=()=>{isListening=true;$("voiceBtn").textContent="⏹ 音声入力終了"};recognition.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal){let raw=e.results[i][0].transcript,r=parseSpeech(raw);transcript.textContent=raw;if(r.no){treeNo.value=r.no;showTree(r.no)}if(r.form)treeForm.value=r.form;if(r.d1)d1.value=r.d1;if(r.d2)d2.value=r.d2;if(r.h)height.value=r.h;if(r.comment)comment.value=r.comment;checkGrowth()}};recognition.onend=()=>{isListening=false;$("voiceBtn").textContent="🎤 音声入力"}}
 $("voiceBtn").onclick=()=>{if(!recognition)return;if(isListening){recognition.stop();return}recognition.start()}
 function esc(v){let s=String(v??"");return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 $("csvBtn").onclick=()=>{let rows=records.map(r=>[r.tree_no,r.current_form,r.current_d1,r.current_d2,r.current_height,r.current_comment]),csv="\uFEFF"+[["樹木番号","樹型級","直径1","直径2","樹高","コメント"],...rows].map(x=>x.map(esc).join(",")).join("\r\n"),u=URL.createObjectURL(new Blob([csv],{type:"text/csv"})),a=document.createElement("a");a.href=u;a.download=safeName(dataBaseName())+".csv";a.click();URL.revokeObjectURL(u)}
