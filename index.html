@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.12</title>
+<title>森林調査 音声記録 v5.13</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.12</h1>
+<h1>🌲 森林調査 音声記録 v5.13</h1>
 
 <div class="card">
  <div class="grid">
@@ -77,7 +77,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 
 <div class="card">
  <label>認識した音声</label><div id="transcript" class="transcript">まだ音声入力されていません。</div>
- <div id="msg" class="status">輪尺：「番号4、樹型級2d、直径18.8、18.9、樹高15.2」のように入力できます。直径テープでは「番号1、直径15.3」のように話してください。「直径1」と言う必要はありません。</div>
+ <div id="msg" class="status">輪尺：「番号4、樹型級にディー、直径18.8、18.9、樹高15.2」のように入力できます。樹型級2a〜2eは「にエー〜にイー」でも入力できます。番号＋直径だけ、番号＋樹高だけでも入力できます。</div>
 </div>
 
 <div class="card"><div class="actions">
@@ -123,33 +123,199 @@ function state(r){let dia=diamMethod.value==="caliper"?(r.current_d1!==""&&r.cur
 function saveCurrent(){let r=findRec(treeNo.value.trim());if(!r)return setMsg("樹木番号を確認してください。","err");r.current_form=treeForm.value.trim();r.current_d1=d1.value.trim();r.current_d2=diamMethod.value==="caliper"?d2.value.trim():"";r.current_height=height.value.trim();r.current_comment=comment.value.trim();localStorage.setItem(storageKey(),JSON.stringify(records));render();checkGrowth();setMsg("今回値を保存しました。","ok")}
 $("saveBtn").onclick=saveCurrent;$("clearBtn").onclick=()=>{treeNo.value="";comparison.classList.add("hidden")};
 function render(){let b=$("body");b.innerHTML="";let done=0,part=0,todo=0;records.slice().sort((a,b)=>Number(a.tree_no)-Number(b.tree_no)).forEach(r=>{let[s,c]=state(r);c==="complete"?done++:c==="partial"?part++:todo++;let tr=document.createElement("tr");tr.className=c;let vals=[s,r.tree_no,r.prev_form,r.current_form,r.prev_d1,r.current_d1,r.prev_d2,r.current_d2,r.prev_height,r.current_height,r.prev_comment,r.current_comment];vals.forEach((v,i)=>{let td=document.createElement("td");td.textContent=v??"";if(i===6||i===7)td.classList.add("d2col");tr.appendChild(td)});tr.onclick=()=>{treeNo.value=r.tree_no;showTree(r.tree_no)};b.appendChild(tr)});$("nAll").textContent=records.length;$("nDone").textContent=done;$("nPart").textContent=part;$("nTodo").textContent=todo;updateMethodUI()}
-function normalize(s){return(s||"").replace(/[０-９．]/g,c=>"０１２３４５６７８９．".indexOf(c)<10?String("０１２３４５６７８９".indexOf(c)):".")}
-function parseSpeech(raw){
- let t=normalize(raw).replace(/[、，]/g,",").replace(/\s+/g,""),r={};
- let m=t.match(/(?:番号|樹木番号)(\d+)/); if(m)r.no=m[1];
+function normalize(s){
+ return(s||"")
+  .replace(/[０-９]/g,c=>String("０１２３４５６７８９".indexOf(c)))
+  .replace(/[．。]/g,".")
+  .replace(/[，、]/g,",")
+  .replace(/[Ａ-Ｅａ-ｅ]/g,c=>{
+    const z="ＡＢＣＤＥａｂｃｄｅ", h="ABCDEabcde";
+    return h[z.indexOf(c)];
+  });
+}
 
- // 樹型級: 2d / 2D のような値
- m=t.match(/樹型級([0-9]+[a-zA-Z]?)/); if(m)r.form=m[1];
+// 樹型級の有効値は 1, 2a～2e, 3, 4, 5。
+// 「2A」「2エー」「二エー」「にエー」等を 2a に正規化する。
+// 音声認識が「受刑92E」のように余分な数字を挟んだ場合も、末尾の 2E を優先する。
+function normalizeTreeForm(segment){
+ let s=normalize(segment).toLowerCase().replace(/\s+/g,"");
 
- // 直径の直後をまず一つの数値として読む。
- // これにより「直径15.3」を「直径1 + 5.3」と誤分割しない。
- // 輪尺: 「直径15.3、14.8」→ D1=15.3, D2=14.8
- // テープ: 「直径15.3」→ D1=15.3
- let dm=t.match(/直径(\d+(?:\.\d+)?)(?:[,・\/](\d+(?:\.\d+)?))?/);
- if(dm){
-   r.d1=dm[1];
-   if(dm[2] && diamMethod.value==="caliper")r.d2=dm[2];
+ const kanaMap=[
+   ["a",/(?:2|二|に)(?:a|エー|えー|エイ|えい)/],
+   ["b",/(?:2|二|に)(?:b|ビー|びー)/],
+   ["c",/(?:2|二|に)(?:c|シー|しー)/],
+   ["d",/(?:2|二|に)(?:d|ディー|でぃー|デー|でー)/],
+   ["e",/(?:2|二|に)(?:e|イー|いー)/]
+ ];
+ for(const [letter,re] of kanaMap){
+   if(re.test(s)) return "2"+letter;
  }
 
- m=t.match(/(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ)(\d+(?:\.\d+)?)/);
- if(m)r.h=m[1];
+ // 92E のような誤認識でも最後の 2a～2e を拾う
+ let all=[...s.matchAll(/2\s*([a-e])/g)];
+ if(all.length) return "2"+all[all.length-1][1];
 
- // コメント以降はそのまま文字列として取り込む
- m=t.match(/コメント(.+)$/); if(m)r.comment=m[1];
- return r
+ // 単独級 1,3,4,5。2単独も許可。
+ let nums=s.match(/[1-5]/g);
+ if(nums && nums.length) return nums[nums.length-1];
+ return "";
 }
-function setupSpeech(){let SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR)return;recognition=new SR();recognition.lang="ja-JP";recognition.interimResults=false;recognition.continuous=true;recognition.onstart=()=>{isListening=true;$("voiceBtn").textContent="⏹ 音声入力終了"};recognition.onresult=e=>{for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal){let raw=e.results[i][0].transcript,r=parseSpeech(raw);transcript.textContent=raw;if(r.no){treeNo.value=r.no;showTree(r.no)}if(r.form)treeForm.value=r.form;if(r.d1)d1.value=r.d1;if(r.d2)d2.value=r.d2;if(r.h)height.value=r.h;if(r.comment)comment.value=r.comment;checkGrowth()}};recognition.onend=()=>{isListening=false;$("voiceBtn").textContent="🎤 音声入力"}}
-$("voiceBtn").onclick=()=>{if(!recognition)return;if(isListening){recognition.stop();return}recognition.start()}
+
+function parseSpeech(raw){
+ // 重要：空白を消さない。「直径26.8 25.8」の2値を分離するため。
+ let t=normalize(raw).replace(/\s+/g," ").trim(), r={};
+
+ // 樹木番号
+ let m=t.match(/(?:樹木\s*番号|番号)\s*(\d+)/);
+ if(m) r.no=m[1];
+
+ // 樹型級。「樹型級」のほか、よくある誤認識も開始語として扱う。
+ // 次の項目（直径・樹高・コメント）までを候補範囲にする。
+ m=t.match(/(?:樹型級|樹型|樹形|受刑)\s*(.*?)(?=\s*(?:直径|樹高|受講|樹こう|じゅこう|ジュコウ|高さ|コメント)|$)/i);
+ if(m){
+   const f=normalizeTreeForm(m[1]);
+   if(f) r.form=f;
+ }
+
+ // 直径：キーワードから次項目までを切り出し、数値を順に取得。
+ // 「直径26.8 25.8」「直径26.8、25.8」の両方に対応。
+ m=t.match(/直径\s*(.*?)(?=\s*(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ|コメント)|$)/i);
+ if(m){
+   let seg=m[1];
+
+   // 「直径1 26.8」のように明示された場合の先頭の1を値と誤認しない。
+   seg=seg.replace(/^\s*1\s*(?=\d)/,"");
+
+   let nums=seg.match(/\d+(?:\.\d+)?/g) || [];
+   if(nums.length){
+     r.d1=nums[0];
+     if(diamMethod.value==="caliper" && nums.length>=2) r.d2=nums[1];
+   }
+ }
+
+ // 「直径2 25.8」だけを後から言うケースにも対応。
+ // 「直径26.8」の26.8を「直径2」と誤解しないよう、2の後に区切りを要求。
+ m=t.match(/直径\s*2(?:\s+|[,・\/])\s*(\d+(?:\.\d+)?)/i);
+ if(m && diamMethod.value==="caliper") r.d2=m[1];
+
+ // 樹高だけの短い入力にも対応
+ m=t.match(/(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ)\s*(\d+(?:\.\d+)?)/i);
+ if(m) r.h=m[1];
+
+ // コメント以降
+ m=t.match(/コメント\s*(.+)$/);
+ if(m) r.comment=m[1].trim();
+
+ return r;
+}
+
+function applySpeechResult(raw){
+ const r=parseSpeech(raw);
+ transcript.textContent=raw;
+
+ if(r.no){
+   treeNo.value=r.no;
+   showTree(r.no);
+ }
+ if(r.form) treeForm.value=r.form;
+ if(r.d1) d1.value=r.d1;
+ if(r.d2) d2.value=r.d2;
+ if(r.h) height.value=r.h;
+ if(r.comment) comment.value=r.comment;
+
+ checkGrowth();
+
+ const found=[];
+ if(r.no) found.push("番号 "+r.no);
+ if(r.form) found.push("樹型級 "+r.form);
+ if(r.d1) found.push("直径1 "+r.d1);
+ if(r.d2) found.push("直径2 "+r.d2);
+ if(r.h) found.push("樹高 "+r.h);
+ if(r.comment) found.push("コメント");
+
+ if(found.length) setMsg("認識："+found.join(" / "),"ok");
+ else setMsg("項目を判別できませんでした。もう一度話してください。","warn");
+}
+
+function setupSpeech(){
+ let SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+ if(!SR){
+   setMsg("このブラウザでは音声認識を利用できません。","err");
+   return;
+ }
+
+ recognition=new SR();
+ recognition.lang="ja-JP";
+ recognition.interimResults=false;
+ recognition.continuous=true;
+ recognition.maxAlternatives=1;
+
+ recognition.onstart=()=>{
+   isListening=true;
+   $("voiceBtn").textContent="⏹ 音声入力終了";
+   setMsg("音声を聞いています。途中で認識が切れた場合は自動で再開します。","ok");
+ };
+
+ recognition.onresult=e=>{
+   for(let i=e.resultIndex;i<e.results.length;i++){
+     if(e.results[i].isFinal){
+       applySpeechResult(e.results[i][0].transcript);
+     }
+   }
+ };
+
+ recognition.onerror=e=>{
+   // no-speech は一時的な無音として扱い、自動再開に任せる。
+   if(e.error==="not-allowed" || e.error==="service-not-allowed"){
+     stopRequested=true;
+     setMsg("マイクの使用が許可されていません。ブラウザのマイク権限を確認してください。","err");
+   }else if(e.error!=="no-speech" && e.error!=="aborted"){
+     setMsg("音声認識エラー："+e.error,"warn");
+   }
+ };
+
+ recognition.onend=()=>{
+   isListening=false;
+
+   // ユーザーが終了を押していなければ、ブラウザ側の途中終了から自動復帰。
+   if(!stopRequested){
+     $("voiceBtn").textContent="⏳ 音声入力を再開中…";
+     setTimeout(()=>{
+       if(!stopRequested && recognition){
+         try{ recognition.start(); }
+         catch(e){
+           $("voiceBtn").textContent="🎤 音声入力";
+           setMsg("音声入力を再開できませんでした。もう一度ボタンを押してください。","warn");
+         }
+       }
+     },350);
+   }else{
+     $("voiceBtn").textContent="🎤 音声入力";
+     setMsg("音声入力を終了しました。","");
+   }
+ };
+}
+
+$("voiceBtn").onclick=()=>{
+ if(!recognition) return;
+
+ if(isListening || !stopRequested){
+   // 実際に認識中なら手動終了。
+   if(isListening){
+     stopRequested=true;
+     try{recognition.stop()}catch(e){}
+     return;
+   }
+ }
+
+ // 新規開始
+ stopRequested=false;
+ try{
+   recognition.start();
+ }catch(e){
+   setMsg("音声入力を開始できませんでした。少し待ってもう一度押してください。","warn");
+ }
+};
 function esc(v){let s=String(v??"");return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 $("csvBtn").onclick=()=>{let rows=records.map(r=>[r.tree_no,r.current_form,r.current_d1,r.current_d2,r.current_height,r.current_comment]),csv="\uFEFF"+[["樹木番号","樹型級","直径1","直径2","樹高","コメント"],...rows].map(x=>x.map(esc).join(",")).join("\r\n"),u=URL.createObjectURL(new Blob([csv],{type:"text/csv"})),a=document.createElement("a");a.href=u;a.download=safeName(dataBaseName())+".csv";a.click();URL.revokeObjectURL(u)}
 updateMethodUI();setupSpeech();render();
