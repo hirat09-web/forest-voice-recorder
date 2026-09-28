@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.14</title>
+<title>森林調査 音声記録 v5.15</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.14</h1>
+<h1>🌲 森林調査 音声記録 v5.15</h1>
 
 <div class="card">
  <div class="grid">
@@ -77,7 +77,8 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 
 <div class="card">
  <label>認識した音声</label><div id="transcript" class="transcript">まだ音声入力されていません。</div>
- <div id="msg" class="status">輪尺：「番号4、樹型級にディー、直径18.8、18.9、樹高15.2」のように入力できます。「直径／直系」の両方に対応し、「樹型級／樹型／樹形／図形／受刑」を樹型級キーワードとして扱います。</div>
+ <div id="pendingStatus" class="status">次の入力：指定なし</div>
+ <div id="msg" class="status">一括発話と分割発話の両方に対応します。例：「番号1」→「直径」→「15.3」→「14.8」→「樹高」→「12.5」。直径／直系、樹型級／樹型／樹形／図形／受刑に対応します。</div>
 </div>
 
 <div class="card"><div class="actions">
@@ -97,6 +98,8 @@ const MASTER = [{"担当":"北海道支所","都道府県":"北海道","試験�
 const $=id=>document.getElementById(id);
 const owner=$("owner"),pref=$("prefecture"),plot=$("plot"),subPlot=$("subPlot"),diamMethod=$("diamMethod"),treeNo=$("treeNo"),treeForm=$("treeForm"),d1=$("d1"),d2=$("d2"),height=$("height"),comment=$("comment"),msg=$("msg"),transcript=$("transcript"),comparison=$("comparison");
 let records=[],recognition=null,isListening=false,stopRequested=false;
+let pendingField=null;
+let speechHistory=[];
 const val=id=>$(id), setMsg=(t,c="")=>{msg.textContent=t;msg.className="status "+c};
 function safeName(s){return(s||"試験地").replace(/[\\/:*?"<>|]/g,"_")}
 function storageKey(){return"forest_v59_"+owner.value+"_"+pref.value+"_"+plot.value+"_"+subPlot.value}
@@ -115,13 +118,41 @@ async function loadSiteCsv(force){let info=$("csvLoadInfo"),name=dataBaseName(),
 $("reloadCsvBtn").onclick=()=>loadSiteCsv(true);
 function findRec(no){return records.find(r=>String(r.tree_no)===String(no))}
 function showTree(no){let r=findRec(no);if(!r){comparison.classList.add("hidden");return}comparison.classList.remove("hidden");$("oldForm").textContent=r.prev_form||"―";$("oldD1").textContent=r.prev_d1||"―";$("oldD2").textContent=r.prev_d2||"―";$("oldHeight").textContent=r.prev_height||"―";$("oldComment").textContent=r.prev_comment||"―";treeForm.value=r.current_form??"";d1.value=r.current_d1??"";d2.value=r.current_d2??"";height.value=r.current_height??"";comment.value=r.current_comment??"";updateMethodUI();checkGrowth()}
-treeNo.onchange=()=>showTree(treeNo.value.trim());
+treeNo.onchange=()=>{setPending(null);showTree(treeNo.value.trim())};
 function growthClass(diff,warn,red){return diff>=red?"growth-red":diff>=warn?"growth-orange":""}
-function checkGrowth(){let r=findRec(treeNo.value.trim());if(!r)return;[["D1",d1,r.prev_d1,3,5,"cm"],["D2",d2,r.prev_d2,3,5,"cm"],["Height",height,r.prev_height,3,5,"m"]].forEach(([id,el,p,w,rr,u])=>{let box=$("warn"+id);box.textContent="";box.className="status";el.classList.remove("growth-orange","growth-red");if(el.value!==""&&p!==""){let diff=Number(el.value)-Number(p),cl=growthClass(diff,w,rr);if(cl){el.classList.add(cl);box.classList.add(cl);box.textContent=(cl==="growth-red"?"⚠ 要確認：":"△ 確認：")+"前回より "+diff.toFixed(1)+u+" 増加しています。測定・入力ミスがないか確認してください。"}}})}
+function checkGrowth(){
+ let r=findRec(treeNo.value.trim());
+ if(!r)return;
+ [["D1",d1,r.prev_d1,3,5,"cm"],["D2",d2,r.prev_d2,3,5,"cm"],["Height",height,r.prev_height,3,5,"m"]].forEach(([id,el,p,w,rr,u])=>{
+   let box=$("warn"+id);
+   box.textContent="";
+   box.className="status";
+   el.classList.remove("growth-orange","growth-red");
+   if(el.value!==""&&p!==""){
+     let diff=Number(el.value)-Number(p);
+     if(!Number.isFinite(diff))return;
+
+     // 今回値が前回値より小さい場合は、測定・入力ミス確認を促す。
+     if(diff<0){
+       el.classList.add("growth-orange");
+       box.classList.add("growth-orange");
+       box.textContent="⚠ 確認：前回より "+Math.abs(diff).toFixed(1)+u+" 小さくなっています。測定・入力ミスがないか確認してください。";
+       return;
+     }
+
+     let cl=growthClass(diff,w,rr);
+     if(cl){
+       el.classList.add(cl);
+       box.classList.add(cl);
+       box.textContent=(cl==="growth-red"?"⚠ 要確認：":"△ 確認：")+"前回より "+diff.toFixed(1)+u+" 増加しています。測定・入力ミスがないか確認してください。";
+     }
+   }
+ })
+}
 [d1,d2,height].forEach(x=>x.oninput=checkGrowth);
 function state(r){let dia=diamMethod.value==="caliper"?(r.current_d1!==""&&r.current_d2!==""):r.current_d1!=="";let h=r.current_height!=="";if(dia&&h)return["✅ 完了","complete"];if(dia||h||r.current_form!=="")return["🟡 途中","partial"];return["⬜ 未測定","todo"]}
 function saveCurrent(){let r=findRec(treeNo.value.trim());if(!r)return setMsg("樹木番号を確認してください。","err");r.current_form=treeForm.value.trim();r.current_d1=d1.value.trim();r.current_d2=diamMethod.value==="caliper"?d2.value.trim():"";r.current_height=height.value.trim();r.current_comment=comment.value.trim();localStorage.setItem(storageKey(),JSON.stringify(records));render();checkGrowth();setMsg("今回値を保存しました。","ok")}
-$("saveBtn").onclick=saveCurrent;$("clearBtn").onclick=()=>{treeNo.value="";comparison.classList.add("hidden")};
+$("saveBtn").onclick=saveCurrent;$("clearBtn").onclick=()=>{treeNo.value="";setPending(null);speechHistory=[];transcript.textContent="まだ音声入力されていません。";comparison.classList.add("hidden")};
 function render(){let b=$("body");b.innerHTML="";let done=0,part=0,todo=0;records.slice().sort((a,b)=>Number(a.tree_no)-Number(b.tree_no)).forEach(r=>{let[s,c]=state(r);c==="complete"?done++:c==="partial"?part++:todo++;let tr=document.createElement("tr");tr.className=c;let vals=[s,r.tree_no,r.prev_form,r.current_form,r.prev_d1,r.current_d1,r.prev_d2,r.current_d2,r.prev_height,r.current_height,r.prev_comment,r.current_comment];vals.forEach((v,i)=>{let td=document.createElement("td");td.textContent=v??"";if(i===6||i===7)td.classList.add("d2col");tr.appendChild(td)});tr.onclick=()=>{treeNo.value=r.tree_no;showTree(r.tree_no)};b.appendChild(tr)});$("nAll").textContent=records.length;$("nDone").textContent=done;$("nPart").textContent=part;$("nTodo").textContent=todo;updateMethodUI()}
 function normalize(s){
  return(s||"")
@@ -142,89 +173,198 @@ function normalizeTreeForm(segment){
    ["d",/(?:2|二|に|ニ|ツー)(?:d|ディー|でぃー|ディ|でぃ|デー|でー)/],
    ["e",/(?:2|二|に|ニ|ツー)(?:e|イー|いー)/]
  ];
- for(const [letter,re] of kanaMap){
-   if(re.test(s)) return "2"+letter;
- }
+ for(const [letter,re] of kanaMap) if(re.test(s)) return "2"+letter;
  let all=[...s.matchAll(/2([a-e])/g)];
  if(all.length) return "2"+all[all.length-1][1];
  if(/^[1-5]$/.test(s)) return s;
  return "";
 }
 
-// 「直径／直系」の後だけを対象に、小数値をまとまりとして抽出する。
-// 15.3 を 5.3 に分割したり、15.3 と 14.8 を連結したりしない。
 function extractDiameterValues(segment){
- let s=normalize(segment)
-   .replace(/(\d)\s*\.\s*(\d)/g,"$1.$2");
-
- const values=[];
- const re=/(^|[^\d.])(\d+\.\d)(?!\d)/g;
+ let s=normalize(segment).replace(/(\d)\s*\.\s*(\d)/g,"$1.$2");
+ const values=[], re=/(^|[^\d.])(\d+\.\d)(?!\d)/g;
  let m;
- while((m=re.exec(s))!==null){
-   values.push(m[2]);
- }
+ while((m=re.exec(s))!==null) values.push(m[2]);
  return values;
+}
+
+function updatePendingStatus(){
+ const labels={
+   diameter1:"直径1",
+   diameter2:"直径2",
+   height:"樹高",
+   treeForm:"樹型級"
+ };
+ $("pendingStatus").textContent="次の入力："+(labels[pendingField]||"指定なし");
+}
+
+function setPending(field){
+ pendingField=field;
+ updatePendingStatus();
+}
+
+function addSpeechHistory(raw){
+ const s=(raw||"").trim();
+ if(!s)return;
+ speechHistory.push(s);
+ if(speechHistory.length>6)speechHistory.shift();
+ transcript.textContent=speechHistory.join(" → ");
+}
+
+function standaloneDecimal(t){
+ const s=normalize(t).trim();
+ const m=s.match(/^(\d+\.\d)$/);
+ return m?m[1]:"";
+}
+
+function standaloneTreeForm(t){
+ return normalizeTreeForm(normalize(t).trim());
 }
 
 function parseSpeech(raw){
  let t=normalize(raw), r={};
 
- // 番号
+ // 新しい番号は最優先。番号変更時には以前の待機状態を破棄する。
  let m=t.match(/(?:樹木\s*番号|番号)\s*(\d+)/);
- if(m) r.no=m[1];
-
- // 樹型級。音声認識で出やすい「樹形」「図形」「受刑」等にも対応。
- m=t.match(/(?:樹型級|樹型|樹形|図形|受刑)\s*(.*?)(?=\s*(?:直径|直系|樹高|受講|樹こう|じゅこう|ジュコウ|高さ|コメント)|$)/i);
  if(m){
-   const f=normalizeTreeForm(m[1]);
-   if(f) r.form=f;
+   r.no=m[1];
+   r.hasNewNumber=true;
  }
 
- // 直径／直系から次の項目までを切り出す。
+ // 樹型級キーワード
+ m=t.match(/(?:樹型級|樹型|樹形|図形|受刑)\s*(.*?)(?=\s*(?:直径|直系|樹高|受講|樹こう|じゅこう|ジュコウ|高さ|コメント)|$)/i);
+ if(m){
+   r.formKeyword=true;
+   const f=normalizeTreeForm(m[1]);
+   if(f)r.form=f;
+ }
+
+ // 直径／直系
  m=t.match(/(?:直径|直系)\s*(.*?)(?=\s*(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ|コメント|樹型級|樹型|樹形|図形|受刑)|$)/i);
  if(m){
+   r.diameterKeyword=true;
    const nums=extractDiameterValues(m[1]);
-   if(nums[0]) r.d1=nums[0];
-   if(diamMethod.value==="caliper" && nums[1]) r.d2=nums[1];
+   if(nums[0])r.d1=nums[0];
+   if(diamMethod.value==="caliper"&&nums[1])r.d2=nums[1];
  }
 
  // 樹高
  m=t.match(/(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ)\s*(\d+(?:\.\d+)?)/i);
- if(m) r.h=m[1];
+ if(m)r.h=m[1];
+ if(/(?:樹高|受講|樹こう|じゅこう|ジュコウ|高さ)/i.test(t))r.heightKeyword=true;
 
  // コメント
  m=t.match(/コメント\s*(.+)$/);
- if(m) r.comment=m[1].trim();
+ if(m)r.comment=m[1].trim();
 
  return r;
 }
 
 function applySpeechResult(raw){
+ addSpeechHistory(raw);
+ const t=normalize(raw);
  const r=parseSpeech(raw);
- transcript.textContent=raw;
 
- if(r.no){
+ // 新しい番号を認識したら以前の待機状態は解除。
+ if(r.hasNewNumber){
+   setPending(null);
    treeNo.value=r.no;
    showTree(r.no);
  }
- if(r.form) treeForm.value=r.form;
- if(r.d1) d1.value=r.d1;
- if(r.d2) d2.value=r.d2;
- if(r.h) height.value=r.h;
- if(r.comment) comment.value=r.comment;
+
+ let handled=false;
+
+ // 明示された項目名は、以前の pending より常に優先する。
+ if(r.formKeyword){
+   if(r.form){
+     treeForm.value=r.form;
+     setPending(null);
+   }else{
+     setPending("treeForm");
+   }
+   handled=true;
+ }
+
+ if(r.diameterKeyword){
+   if(r.d1){
+     d1.value=r.d1;
+     if(diamMethod.value==="caliper"){
+       if(r.d2){
+         d2.value=r.d2;
+         setPending(null);
+       }else{
+         setPending("diameter2");
+       }
+     }else{
+       setPending(null);
+     }
+   }else{
+     setPending("diameter1");
+   }
+   handled=true;
+ }
+
+ if(r.heightKeyword){
+   if(r.h){
+     height.value=r.h;
+     setPending(null);
+   }else{
+     setPending("height");
+   }
+   handled=true;
+ }
+
+ if(r.comment){
+   comment.value=r.comment;
+   handled=true;
+ }
+
+ // キーワードのない次の発話を pendingField に従って処理する。
+ if(!handled && pendingField){
+   if(pendingField==="diameter1" || pendingField==="diameter2"){
+     const n=standaloneDecimal(t);
+     if(n){
+       if(pendingField==="diameter1"){
+         d1.value=n;
+         if(diamMethod.value==="caliper")setPending("diameter2");
+         else setPending(null);
+       }else{
+         d2.value=n;
+         setPending(null);
+       }
+       handled=true;
+     }
+   }else if(pendingField==="height"){
+     const n=standaloneDecimal(t);
+     if(n){
+       height.value=n;
+       setPending(null);
+       handled=true;
+     }
+   }else if(pendingField==="treeForm"){
+     const f=standaloneTreeForm(t);
+     if(f){
+       treeForm.value=f;
+       setPending(null);
+       handled=true;
+     }
+   }
+ }
 
  checkGrowth();
 
  const found=[];
- if(r.no) found.push("番号 "+r.no);
- if(r.form) found.push("樹型級 "+r.form);
- if(r.d1) found.push("直径1 "+r.d1);
- if(r.d2) found.push("直径2 "+r.d2);
- if(r.h) found.push("樹高 "+r.h);
- if(r.comment) found.push("コメント");
+ if(r.no)found.push("番号 "+r.no);
+ if(treeForm.value && (r.form||handled))found.push("樹型級 "+treeForm.value);
+ if(d1.value && (r.d1||handled))found.push("直径1 "+d1.value);
+ if(d2.value && (r.d2||handled))found.push("直径2 "+d2.value);
+ if(height.value && (r.h||handled))found.push("樹高 "+height.value);
 
- if(found.length) setMsg("認識："+found.join(" / "),"ok");
- else setMsg("項目を判別できませんでした。もう一度話してください。","warn");
+ if(handled || r.no){
+   setMsg(found.length?"認識："+found.join(" / "):"次の値を待っています。","ok");
+ }else{
+   setMsg("項目を判別できませんでした。項目名を言ってから値を話してください。","warn");
+ }
 }
 
 function setupSpeech(){
@@ -233,7 +373,6 @@ function setupSpeech(){
    setMsg("このブラウザでは音声認識を利用できません。","err");
    return;
  }
-
  recognition=new SR();
  recognition.lang="ja-JP";
  recognition.interimResults=false;
@@ -243,36 +382,30 @@ function setupSpeech(){
  recognition.onstart=()=>{
    isListening=true;
    $("voiceBtn").textContent="⏹ 音声入力終了";
-   setMsg("音声を聞いています。途中で認識が切れた場合は自動で再開します。","ok");
  };
 
  recognition.onresult=e=>{
    for(let i=e.resultIndex;i<e.results.length;i++){
-     if(e.results[i].isFinal){
-       applySpeechResult(e.results[i][0].transcript);
-     }
+     if(e.results[i].isFinal)applySpeechResult(e.results[i][0].transcript);
    }
  };
 
  recognition.onerror=e=>{
-   // no-speech は一時的な無音として扱い、自動再開に任せる。
-   if(e.error==="not-allowed" || e.error==="service-not-allowed"){
+   if(e.error==="not-allowed"||e.error==="service-not-allowed"){
      stopRequested=true;
      setMsg("マイクの使用が許可されていません。ブラウザのマイク権限を確認してください。","err");
-   }else if(e.error!=="no-speech" && e.error!=="aborted"){
+   }else if(e.error!=="no-speech"&&e.error!=="aborted"){
      setMsg("音声認識エラー："+e.error,"warn");
    }
  };
 
  recognition.onend=()=>{
    isListening=false;
-
-   // ユーザーが終了を押していなければ、ブラウザ側の途中終了から自動復帰。
    if(!stopRequested){
      $("voiceBtn").textContent="⏳ 音声入力を再開中…";
      setTimeout(()=>{
-       if(!stopRequested && recognition){
-         try{ recognition.start(); }
+       if(!stopRequested&&recognition){
+         try{recognition.start()}
          catch(e){
            $("voiceBtn").textContent="🎤 音声入力";
            setMsg("音声入力を再開できませんでした。もう一度ボタンを押してください。","warn");
@@ -281,32 +414,22 @@ function setupSpeech(){
      },350);
    }else{
      $("voiceBtn").textContent="🎤 音声入力";
-     setMsg("音声入力を終了しました。","");
    }
  };
 }
 
 $("voiceBtn").onclick=()=>{
- if(!recognition) return;
-
- if(isListening || !stopRequested){
-   // 実際に認識中なら手動終了。
-   if(isListening){
-     stopRequested=true;
-     try{recognition.stop()}catch(e){}
-     return;
-   }
+ if(!recognition)return;
+ if(isListening){
+   stopRequested=true;
+   try{recognition.stop()}catch(e){}
+   return;
  }
-
- // 新規開始
  stopRequested=false;
- try{
-   recognition.start();
- }catch(e){
-   setMsg("音声入力を開始できませんでした。少し待ってもう一度押してください。","warn");
- }
+ try{recognition.start()}
+ catch(e){setMsg("音声入力を開始できませんでした。少し待ってもう一度押してください。","warn")}
 };
 function esc(v){let s=String(v??"");return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
 $("csvBtn").onclick=()=>{let rows=records.map(r=>[r.tree_no,r.current_form,r.current_d1,r.current_d2,r.current_height,r.current_comment]),csv="\uFEFF"+[["樹木番号","樹型級","直径1","直径2","樹高","コメント"],...rows].map(x=>x.map(esc).join(",")).join("\r\n"),u=URL.createObjectURL(new Blob([csv],{type:"text/csv"})),a=document.createElement("a");a.href=u;a.download=safeName(dataBaseName())+".csv";a.click();URL.revokeObjectURL(u)}
-updateMethodUI();setupSpeech();render();
+updateMethodUI();updatePendingStatus();setupSpeech();render();
 </script></body></html>
