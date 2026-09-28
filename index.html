@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.16</title>
+<title>森林調査 音声記録 v5.19</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.16</h1>
+<h1>🌲 森林調査 音声記録 v5.19</h1>
 
 <div class="card">
  <div class="grid">
@@ -66,7 +66,19 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
    <div class="small"><b>前回コメント：</b><span id="oldComment">―</span></div>
   </div>
   <div class="box new"><h3>今回調査</h3>
-   <label>樹型級</label><input id="treeForm" inputmode="numeric" placeholder="樹型級">
+   <label>樹型級</label>
+   <select id="treeForm">
+    <option value="">選択してください</option>
+    <option value="1">1</option>
+    <option value="2a">2a</option>
+    <option value="2b">2b</option>
+    <option value="2c">2c</option>
+    <option value="2d">2d</option>
+    <option value="2e">2e</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+   </select>
    <label style="margin-top:8px">直径1 (cm)</label><input id="d1" inputmode="decimal" placeholder="例 45.2"><div id="warnD1" class="status"></div>
    <div id="d2Wrap"><label style="margin-top:8px">直径2 (cm)</label><input id="d2" inputmode="decimal" placeholder="例 44.8"><div id="warnD2" class="status"></div></div>
    <label style="margin-top:8px">樹高 (m)</label><input id="height" inputmode="decimal" placeholder="例 22.1"><div id="warnHeight" class="status"></div>
@@ -171,7 +183,7 @@ function normalizeTreeForm(segment){
    ["b",/(?:2|二|に|ニ|ツー)(?:b|ビー|びー)/],
    ["c",/(?:2|二|に|ニ|ツー)(?:c|シー|しー)/],
    ["d",/(?:2|二|に|ニ|ツー)(?:d|ディー|でぃー|ディ|でぃ|デー|でー)/],
-   ["e",/(?:2|二|に|ニ|ツー)(?:e|イー|いー)/]
+   ["e",/(?:2|二|に|ニ|ツー)(?:e|イー|いー|いい)/]
  ];
  for(const [letter,re] of kanaMap) if(re.test(s)) return "2"+letter;
  let all=[...s.matchAll(/2([a-e])/g)];
@@ -441,6 +453,19 @@ $("voiceBtn").onclick=()=>{
  catch(e){setMsg("音声入力を開始できませんでした。少し待ってもう一度押してください。","warn")}
 };
 function esc(v){let s=String(v??"");return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
-$("csvBtn").onclick=()=>{let rows=records.map(r=>[r.tree_no,r.current_form,r.current_d1,r.current_d2,r.current_height,r.current_comment]),csv="\uFEFF"+[["樹木番号","樹型級","直径1","直径2","樹高","コメント"],...rows].map(x=>x.map(esc).join(",")).join("\r\n"),u=URL.createObjectURL(new Blob([csv],{type:"text/csv"})),a=document.createElement("a");a.href=u;a.download=safeName(dataBaseName())+".csv";a.click();URL.revokeObjectURL(u)}
+function exportTimestamp(){
+ let d=new Date(),p=n=>String(n).padStart(2,"0");
+ return d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+"_"+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds());
+}
+$("csvBtn").onclick=()=>{
+ let rows=records.map(r=>[r.tree_no,r.current_form,r.current_d1,r.current_d2,r.current_height,r.current_comment]),
+ csv="\uFEFF"+[["樹木番号","樹型級","直径1","直径2","樹高","コメント"],...rows].map(x=>x.map(esc).join(",")).join("\r\n"),
+ u=URL.createObjectURL(new Blob([csv],{type:"text/csv"})),
+ a=document.createElement("a");
+ a.href=u;
+ a.download=safeName(dataBaseName())+"_"+exportTimestamp()+".csv";
+ a.click();
+ setTimeout(()=>URL.revokeObjectURL(u),1000);
+}
 updateMethodUI();updatePendingStatus();setupSpeech();render();
 </script></body></html>
