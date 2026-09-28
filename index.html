@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.19</title>
+<title>森林調査 音声記録 v5.20</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.19</h1>
+<h1>🌲 森林調査 音声記録 v5.20</h1>
 
 <div class="card">
  <div class="grid">
@@ -468,4 +468,22 @@ $("csvBtn").onclick=()=>{
  setTimeout(()=>URL.revokeObjectURL(u),1000);
 }
 updateMethodUI();updatePendingStatus();setupSpeech();render();
-</script></body></html>
+</script>
+<script>
+/* v5.20 offline support:
+   - online: service worker updates the saved app
+   - offline: last successfully saved version is used */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", async () => {
+    try {
+      const reg = await navigator.serviceWorker.register("./service-worker.js", {scope:"./"});
+      // Check for a newer service worker whenever the app is opened online.
+      reg.update().catch(()=>{});
+    } catch (e) {
+      console.warn("Service Worker registration failed:", e);
+    }
+  });
+}
+</script>
+
+</body></html>
