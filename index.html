@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>森林調査 音声記録 v5.15</title>
+<title>森林調査 音声記録 v5.16</title>
 <style>
 :root{--bg:#f4f7f5;--card:#fff;--text:#1f2a24;--muted:#68736d;--border:#cfd8d2;--primary:#256b45;--ok:#e5f5ea;--partial:#fff3cd;--todo:#f1f3f2;--dead:#ece6e6;--danger:#a63d40}
 *{box-sizing:border-box} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
@@ -27,7 +27,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 </style>
 </head>
 <body><div class="wrap">
-<h1>🌲 森林調査 音声記録 v5.15</h1>
+<h1>🌲 森林調査 音声記録 v5.16</h1>
 
 <div class="card">
  <div class="grid">
@@ -78,7 +78,7 @@ tr.complete{background:var(--ok)}tr.partial{background:var(--partial)}tr.todo{ba
 <div class="card">
  <label>認識した音声</label><div id="transcript" class="transcript">まだ音声入力されていません。</div>
  <div id="pendingStatus" class="status">次の入力：指定なし</div>
- <div id="msg" class="status">一括発話と分割発話の両方に対応します。例：「番号1」→「直径」→「15.3」→「14.8」→「樹高」→「12.5」。直径／直系、樹型級／樹型／樹形／図形／受刑に対応します。</div>
+ <div id="msg" class="status">一括発話と分割発話の両方に対応します。輪尺では「番号1」→「直径15.3」→「直径14.8」→「樹高12.5」の発話を推奨します。直径2待ちのときに再度「直径／直系＋数値」と言うと直径2へ入力します。</div>
 </div>
 
 <div class="card"><div class="actions">
@@ -287,19 +287,30 @@ function applySpeechResult(raw){
 
  if(r.diameterKeyword){
    if(r.d1){
-     d1.value=r.d1;
-     if(diamMethod.value==="caliper"){
-       if(r.d2){
-         d2.value=r.d2;
-         setPending(null);
-       }else{
-         setPending("diameter2");
-       }
-     }else{
+     if(diamMethod.value==="caliper" && pendingField==="diameter2" && !r.d2){
+       // 輪尺で直径2待ちのときに、再び「直径14.8」のように
+       // キーワード付きで発話した場合は、その値を直径2へ入れる。
+       d2.value=r.d1;
        setPending(null);
+     }else{
+       d1.value=r.d1;
+       if(diamMethod.value==="caliper"){
+         if(r.d2){
+           d2.value=r.d2;
+           setPending(null);
+         }else{
+           setPending("diameter2");
+         }
+       }else{
+         setPending(null);
+       }
      }
    }else{
-     setPending("diameter1");
+     // 直径2待ちの最中に「直径」だけを言った場合は
+     // 直径2待ちを維持し、直径1へ戻さない。
+     if(!(diamMethod.value==="caliper" && pendingField==="diameter2")){
+       setPending("diameter1");
+     }
    }
    handled=true;
  }
